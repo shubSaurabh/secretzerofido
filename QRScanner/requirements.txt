@@ -1,0 +1,9 @@
+opencv-python==4.8.1.78
+Pillow==10.1.0
+cryptography==41.0.7
+requests==2.31.0
+numpy==1.26.2
+pyautogui==0.9.54
+mss==9.0.1
+qreader==3.14
+pyyaml==6.0.1

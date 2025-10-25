@@ -1,0 +1,14 @@
+auth_server: "http://192.168.1.100:5000"
+
+user:
+  user_id: "user001"
+  username: "testuser"
+  domain: ""  # Leave empty for local user, or specify domain like "CONTOSO"
+
+scanner:
+  timeout: 90  # seconds
+  poll_interval: 0.5  # seconds
+
+logging:
+  level: "INFO"
+  file: "qr_scanner.log"

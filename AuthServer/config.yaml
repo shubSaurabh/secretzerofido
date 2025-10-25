@@ -1,0 +1,16 @@
+server:
+  host: "0.0.0.0"
+  port: 5000
+  debug: false
+
+security:
+  session_timeout: 120  # seconds
+  max_sessions: 1000
+
+database:
+  type: "memory"  # Use "sqlite" or "postgresql" for production
+  path: "users.db"
+
+logging:
+  level: "INFO"
+  file: "/var/log/rdp-qr-auth.log"
