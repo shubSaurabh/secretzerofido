@@ -9,7 +9,7 @@ import requests
 from datetime import datetime
 
 # Configuration - UPDATE THESE
-AUTH_SERVER_URL = 'http://192.168.1.100:5000'
+AUTH_SERVER_URL = 'http://192.168.128.133:5000'
 SERVER_ID = 'TEST-SERVER'
 
 def main():

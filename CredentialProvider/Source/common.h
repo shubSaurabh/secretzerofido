@@ -20,7 +20,11 @@
 #include <winhttp.h>
 #include <ntstatus.h>
 #include <gdiplus.h>
-
+// Security headers
+#define SECURITY_WIN32
+#include <security.h>
+#include <sspi.h>
+#include <shlwapi.h>
 // ATL/STL
 #include <atlbase.h>
 #include <atlstr.h>
@@ -33,7 +37,7 @@
 #pragma comment(lib, "netapi32.lib")
 #pragma comment(lib, "Secur32.lib")
 #pragma comment(lib, "gdiplus.lib")
-
+#pragma comment(lib, "Shlwapi.lib")
 //
 // GUID for our credential provider
 // This uniquely identifies our provider in the Windows registry
@@ -42,12 +46,22 @@
 //
 DEFINE_GUID(CLSID_RDPQRProvider,
     0x8b5c9f21, 0x3a4d, 0x4e2f, 0x9c, 0x1b, 0x7a, 0x8e, 0x6d, 0x5f, 0x4c, 0x3b);
-
+//EXTERN_C const GUID CLSID_RDPQRProvider;
 //
+// 
+// // Status text messages
+#define RDPQR_STATUS_INITIALIZING       L"Initializing..."
+#define RDPQR_STATUS_GENERATING_QR      L"Generating QR code..."
+#define RDPQR_STATUS_SCAN_QR            L"SECURITAAS - Scan this QR code with your secret-0 agent"
+#define RDPQR_STATUS_WAITING_AUTH       L"Waiting for authentication..."
+#define RDPQR_STATUS_AUTHENTICATED      L"Authentication successful with secret-0!"
+#define RDPQR_STATUS_ERROR              L"Authentication failed. Please try again."
+#define RDPQR_STATUS_TIMEOUT            L"Authentication timed out."
+#define RDPQR_STATUS_CONNECTION_ERROR   L"Cannot connect to authentication server."
 // Configuration Constants
 // IMPORTANT: Change AUTH_SERVER_URL to your Ubuntu server's IP address
 //
-#define AUTH_SERVER_URL L"http://192.168.126.128:5000"  // *** CHANGE THIS ***
+#define AUTH_SERVER_URL L"http://192.168.126.133:5000"  // *** CHANGE THIS ***
 #define POLL_INTERVAL 2000          // Poll authentication server every 2 seconds
 #define SESSION_TIMEOUT 120000      // Session expires after 2 minutes (120 seconds)
 #define MAX_POLL_ATTEMPTS 60        // Maximum number of poll attempts (2 min / 2 sec)
@@ -58,10 +72,10 @@ DEFINE_GUID(CLSID_RDPQRProvider,
 //
 enum RDPQR_FIELD_ID
 {
-    RDPQR_FI_QR_CODE = 0,          // Bitmap field showing the QR code
-    RDPQR_FI_STATUS_TEXT = 1,      // Text field showing status messages
-    RDPQR_FI_SUBMIT_BUTTON = 2,    // Submit button (hidden, auto-submits on auth)
-    RDPQR_FI_NUM_FIELDS = 3,       // Total number of fields
+    RDPQR_FI_LABEL = 0,          // "QR Code Login" text
+    RDPQR_FI_QR_IMAGE = 1,       // The actual QR code bitmap
+    RDPQR_FI_STATUS_TEXT = 2, // Status message below QR
+    RDPQR_FI_NUM_FIELDS          // Total count (will be 3)
 };
 
 //
@@ -163,13 +177,13 @@ void LogDebugMessage(LPCWSTR format, ...);
 //
 // String Constants for UI
 //
-#define RDPQR_PROVIDER_NAME L"QR Code Authentication"
+#define RDPQR_PROVIDER_NAME L"SECURITAAS - QR Code Authentication"
 #define RDPQR_TILE_NAME L"Scan QR Code to Login"
 #define RDPQR_STATUS_INITIALIZING L"Initializing authentication..."
-#define RDPQR_STATUS_WAITING L"Scan the QR code with your mobile device"
+#define RDPQR_STATUS_WAITING L"Scan the QR code with your secret-0 agent"
 #define RDPQR_STATUS_AUTHENTICATING L"Authenticating..."
-#define RDPQR_STATUS_SUCCESS L"Authentication successful! Logging in..."
-#define RDPQR_STATUS_FAILED L"Authentication failed. Please try again."
+#define RDPQR_STATUS_SUCCESS L"Authentication successful with secret-0! Press enter to log in."
+#define RDPQR_STATUS_FAILED L"Authentication failed. Please try again, or contact your secret-0 administrator."
 #define RDPQR_STATUS_TIMEOUT L"Authentication timeout. Please try again."
-#define RDPQR_STATUS_ERROR L"An error occurred. Please contact your administrator."
+#define RDPQR_STATUS_ERROR L"An error occurred. Please try again, or contact your secret-0 administrator."
 

@@ -29,14 +29,15 @@ public:
     // Generate QR code bitmap from session data
     // Creates an actual QR code image that can be displayed
     HRESULT GenerateQRCodeBitmap(LPCWSTR qrData, HBITMAP* phBitmap);
-
+    // Parse JSON string value (simple parser for our use case)
+    HRESULT ParseJsonString(const std::wstring& json, LPCWSTR key, std::wstring& value);
+    // Make HTTP request (GET or POST)
+    HRESULT HttpRequest(LPCWSTR method, LPCWSTR path, LPCWSTR jsonData, std::wstring& response);
 private:
     std::wstring m_serverUrl;           // Authentication server URL
     ULONG_PTR m_gdiplusToken;          // GDI+ token for graphics operations
     
-    // Make HTTP request (GET or POST)
-    HRESULT HttpRequest(LPCWSTR method, LPCWSTR path, LPCWSTR jsonData, std::wstring& response);
+
     
-    // Parse JSON string value (simple parser for our use case)
-    HRESULT ParseJsonString(const std::wstring& json, LPCWSTR key, std::wstring& value);
+
 };

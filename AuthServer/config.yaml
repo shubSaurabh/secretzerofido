@@ -1,16 +1,30 @@
 server:
-  host: "0.0.0.0"
+  host: '0.0.0.0'
   port: 5000
-  debug: false
+  debug: true
 
 security:
   session_timeout: 120  # seconds
   max_sessions: 1000
 
-database:
-  type: "memory"  # Use "sqlite" or "postgresql" for production
-  path: "users.db"
+certificates:
+  validity_minutes: 5  # Ephemeral certificate lifetime
+  key_size: 2048
+  ca_cert_path: './ca/ca_cert.pem'
+  ca_key_path: './ca/ca_key.pem'
+  crl_url: 'http://192.168.126.133:5000/api/crl'  # CRL Distribution Point URL
 
-logging:
-  level: "INFO"
-  file: "/var/log/rdp-qr-auth.log"
+storage:
+  revoked_certs_path: './data/revoked_certs.json'
+  issued_certs_path: './data/issued_certs.json'
+
+# Optional: Configure these for production
+# database:
+#   url: 'postgresql://user:pass@localhost/authdb'
+#   
+# crl:
+#   update_interval: 3600  # seconds
+#
+# logging:
+#   level: 'INFO'
+#   file: './logs/auth_server.log'

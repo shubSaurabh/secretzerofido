@@ -1,4 +1,4 @@
-auth_server: "http://192.168.1.100:5000"
+auth_server: "http://192.168.128.133:5000"
 
 user:
   user_id: "user001"

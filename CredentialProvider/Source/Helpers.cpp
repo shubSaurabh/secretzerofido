@@ -7,7 +7,16 @@
 #include <sddl.h>
 #include <dsgetdc.h>
 #include <lmcons.h>
-
+#ifndef NEGOSSP_NAME_A
+#define NEGOSSP_NAME_A "Negotiate"
+#endif
+#ifndef LsaInitString
+#define LsaInitString(d, s) { \
+    (d)->Buffer = (PCHAR)(s); \
+    (d)->Length = (s) ? (USHORT)strlen(s) : 0; \
+    (d)->MaximumLength = (d)->Length; \
+}
+#endif
 #pragma comment(lib, "netapi32.lib")
 
 //
@@ -354,17 +363,30 @@ std::string WideToUtf8(const std::wstring& wide)
 
 void LogDebugMessage(LPCWSTR format, ...)
 {
-#ifdef _DEBUG
-    WCHAR buffer[1024];
+    if (!format) return;
+
+    // Prepare message
+    WCHAR message[1024];
     va_list args;
     va_start(args, format);
-    
-    StringCchVPrintfW(buffer, ARRAYSIZE(buffer), format, args);
-    
+    StringCchVPrintfW(message, ARRAYSIZE(message), format, args);
     va_end(args);
-    
-    HANDLE hFile = CreateFile(
-        L"C:\\Windows\\Temp\\RDPQRProvider.log",
+
+    // Get timestamp
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+
+    WCHAR timestamp[100];
+    StringCchPrintfW(timestamp, ARRAYSIZE(timestamp),
+        L"[%04d-%02d-%02d %02d:%02d:%02d.%03d] ",
+        st.wYear, st.wMonth, st.wDay,
+        st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+
+    // Write to persistent log file
+    WCHAR logPath[] = L"C:\\ProgramData\\RDPQRProvider.log";
+
+    HANDLE hFile = CreateFileW(
+        logPath,
         FILE_APPEND_DATA,
         FILE_SHARE_READ | FILE_SHARE_WRITE,
         nullptr,
@@ -372,28 +394,39 @@ void LogDebugMessage(LPCWSTR format, ...)
         FILE_ATTRIBUTE_NORMAL,
         nullptr
     );
-    
+
     if (hFile != INVALID_HANDLE_VALUE)
     {
-        SYSTEMTIME st;
-        GetLocalTime(&st);
-        
-        WCHAR timestamp[100];
-        StringCchPrintfW(timestamp, ARRAYSIZE(timestamp),
-            L"[%04d-%02d-%02d %02d:%02d:%02d] ",
-            st.wYear, st.wMonth, st.wDay,
-            st.wHour, st.wMinute, st.wSecond);
-        
-        DWORD written;
-        std::wstring logLine = timestamp;
-        logLine += buffer;
-        logLine += L"\r\n";
-        
-        std::string utf8Log = WideToUtf8(logLine);
-        WriteFile(hFile, utf8Log.c_str(), (DWORD)utf8Log.size(), &written, nullptr);
-        
+        // Add session marker on first log
+        static bool sessionMarkerWritten = false;
+        if (!sessionMarkerWritten)
+        {
+            char separator[512];
+            sprintf_s(separator, sizeof(separator),
+                "\r\n========================================\r\n"
+                "NEW BOOT SESSION - %04d-%02d-%02d %02d:%02d:%02d\r\n"
+                "========================================\r\n",
+                st.wYear, st.wMonth, st.wDay,
+                st.wHour, st.wMinute, st.wSecond);
+
+            DWORD bytesWritten;
+            WriteFile(hFile, separator, (DWORD)strlen(separator), &bytesWritten, nullptr);
+            sessionMarkerWritten = true;
+        }
+
+        WCHAR fullMessage[2048];
+        StringCchPrintfW(fullMessage, ARRAYSIZE(fullMessage),
+            L"%s%s\r\n", timestamp, message);
+
+        char utf8Message[4096];
+        WideCharToMultiByte(CP_UTF8, 0, fullMessage, -1,
+            utf8Message, sizeof(utf8Message), nullptr, nullptr);
+
+        DWORD bytesWritten;
+        WriteFile(hFile, utf8Message, (DWORD)strlen(utf8Message),
+            &bytesWritten, nullptr);
+
         CloseHandle(hFile);
     }
-#endif
 }
 
