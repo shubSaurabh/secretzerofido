@@ -2,8 +2,10 @@
 // common.h
 // Common definitions, structures, and constants used throughout the credential provider
 //
-
 #pragma once
+// Toggle: 1 = CP imports PFX at runtime (current behavior)
+//         0 = CP uses an existing cert already in LocalMachine\MY
+#define RDPQR_IMPORT_PFX_AT_RUNTIME 0
 
 // Windows Headers
 #include <windows.h>
@@ -20,11 +22,13 @@
 #include <winhttp.h>
 #include <ntstatus.h>
 #include <gdiplus.h>
+
 // Security headers
 #define SECURITY_WIN32
 #include <security.h>
 #include <sspi.h>
 #include <shlwapi.h>
+
 // ATL/STL
 #include <atlbase.h>
 #include <atlstr.h>
@@ -32,99 +36,158 @@
 #include <memory>
 #include <vector>
 
+// Crypto
+#include <ncrypt.h>
+#pragma comment(lib, "ncrypt.lib")
+#include <wincrypt.h>
+#pragma comment(lib, "crypt32.lib")
+#include <Wtsapi32.h>
+#pragma comment(lib, "Wtsapi32.lib")
+
+#ifndef ERROR_NO_LOGON_SESSION
+#define ERROR_NO_LOGON_SESSION 1312L  // WinError.h: "A specified logon session does not exist."
+#endif
+// WinHTTP / misc
 #pragma comment(lib, "credui.lib")
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "netapi32.lib")
 #pragma comment(lib, "Secur32.lib")
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "Shlwapi.lib")
+
 //
 // GUID for our credential provider
-// This uniquely identifies our provider in the Windows registry
-// Generated using guidgen.exe
 // {8B5C9F21-3A4D-4E2F-9C1B-7A8E6D5F4C3B}
 //
 DEFINE_GUID(CLSID_RDPQRProvider,
     0x8b5c9f21, 0x3a4d, 0x4e2f, 0x9c, 0x1b, 0x7a, 0x8e, 0x6d, 0x5f, 0x4c, 0x3b);
-//EXTERN_C const GUID CLSID_RDPQRProvider;
-//
-// 
-// // Status text messages
-#define RDPQR_STATUS_INITIALIZING       L"Initializing..."
-#define RDPQR_STATUS_GENERATING_QR      L"Generating QR code..."
-#define RDPQR_STATUS_SCAN_QR            L"SECURITAAS - Scan this QR code with your secret-0 agent"
-#define RDPQR_STATUS_WAITING_AUTH       L"Waiting for authentication..."
-#define RDPQR_STATUS_AUTHENTICATED      L"Authentication successful with secret-0!"
-#define RDPQR_STATUS_ERROR              L"Authentication failed. Please try again."
-#define RDPQR_STATUS_TIMEOUT            L"Authentication timed out."
-#define RDPQR_STATUS_CONNECTION_ERROR   L"Cannot connect to authentication server."
-// Configuration Constants
-// IMPORTANT: Change AUTH_SERVER_URL to your Ubuntu server's IP address
-//
-#define AUTH_SERVER_URL L"http://192.168.126.133:5000"  // *** CHANGE THIS ***
-#define POLL_INTERVAL 2000          // Poll authentication server every 2 seconds
-#define SESSION_TIMEOUT 120000      // Session expires after 2 minutes (120 seconds)
-#define MAX_POLL_ATTEMPTS 60        // Maximum number of poll attempts (2 min / 2 sec)
 
-//
-// Field IDs for the credential tile UI
-// These represent the visual elements shown to the user
-//
+// =====================
+// Configuration
+// =====================
+// Auth server URL is now read from registry (set by installer)
+// Registry path: HKLM\SOFTWARE\SecurITaas\CredentialProvider
+#define RDPQR_REGISTRY_CONFIG_PATH L"SOFTWARE\\SecurITaas\\CredentialProvider"
+#define RDPQR_REGISTRY_SERVER_KEY L"AuthServer"
+#define RDPQR_REGISTRY_PORT_KEY L"AuthPort"
+#define RDPQR_REGISTRY_USERNAME_KEY L"EncryptedUsername"
+#define RDPQR_REGISTRY_PASSWORD_KEY L"EncryptedPassword"
+
+// Polling behavior
+#define POLL_INTERVAL     2000      // ms
+#define SESSION_TIMEOUT   120000    // ms
+#define MAX_POLL_ATTEMPTS 60
+
+// Alignment macros
+#define ALIGN_LPVOID sizeof(LPVOID)
+#define ROUND_UP_COUNT(Count,Pow2) \
+    ( ((Count)+(Pow2)-1) & (~(((LONG)(Pow2))-1)) )
+
+// =====================
+// UI Field IDs
+// =====================
 enum RDPQR_FIELD_ID
 {
-    RDPQR_FI_LABEL = 0,          // "QR Code Login" text
-    RDPQR_FI_QR_IMAGE = 1,       // The actual QR code bitmap
-    RDPQR_FI_STATUS_TEXT = 2, // Status message below QR
-    RDPQR_FI_NUM_FIELDS          // Total count (will be 3)
+    RDPQR_FI_LABEL = 0,        // "Securitaas QR Code Login" text
+    RDPQR_FI_QR_IMAGE = 1,     // The QR code bitmap
+    RDPQR_FI_STATUS_TEXT = 2,  // Status message
+    RDPQR_FI_NUM_FIELDS
 };
 
-//
-// Field State Pair
-// Defines the state and interactivity of each field
-//
+// Field state pair
 struct FIELD_STATE_PAIR
 {
-    CREDENTIAL_PROVIDER_FIELD_STATE cpfs;              // Field state (hidden/displayed)
-    CREDENTIAL_PROVIDER_FIELD_INTERACTIVE_STATE cpfis; // Interactive state (readonly/editable)
+    CREDENTIAL_PROVIDER_FIELD_STATE              cpfs;
+    CREDENTIAL_PROVIDER_FIELD_INTERACTIVE_STATE  cpfis;
 };
 
-//
-// Session Data Structure
-// Contains all information about an authentication session
-//
+// =====================
+// Status strings (PFX flow)
+// =====================
+#define RDPQR_PROVIDER_NAME   L"Logon using Securitaas"
+#define RDPQR_TILE_NAME       L"Scan QR Code to Login"
+
+#define RDPQR_STATUS_INITIALIZING  L"Creating your passwordless experience, please wait.."
+#define RDPQR_STATUS_WAITING       L"Scan the QR code with your secret-0 agent"
+#define RDPQR_STATUS_AUTHENTICATED L"Authenticated. Importing certificate�"
+#define RDPQR_STATUS_SUCCESS       L"Certificate imported. Signing you in�"
+#define RDPQR_STATUS_ERROR         L"An error occurred. Please try again, or contact your secret-0 administrator."
+#define RDPQR_STATUS_TIMEOUT       L"Authentication timeout. Please try again."
+#define RDPQR_STATUS_ERROR_CONNECTION L"Failed to connect to authentication server. Please check your network connection."
+#define RDPQR_STATUS_ERROR_TOKEN    L"Failed to obtain authentication token. Please contact your administrator."
+#define RDPQR_STATUS_ERROR_SESSION  L"Failed to create authentication session. Please try again."
+#define RDPQR_STATUS_ERROR_CERT     L"Failed to retrieve certificate. Please try again."
+#define RDPQR_STATUS_ERROR_PIN      L"Could not authenticate with SecurITaas server. Invalid key received."
+
+// =====================
+// KERB_SMARTCARD_CSP_INFO (not in public headers)
+// =====================
+typedef struct _KERB_SMARTCARD_CSP_INFO {
+    DWORD dwCspInfoLen;
+    DWORD MessageType;  // Must be 1 (KerbCertificateLogon)
+    union {
+        PVOID   ContextInformation;
+        ULONG64 SpaceHolderForWow64;
+    };
+    DWORD flags;
+    DWORD KeySpec;
+    ULONG nCardNameOffset;
+    ULONG nReaderNameOffset;
+    ULONG nContainerNameOffset;
+    ULONG nCSPNameOffset;
+    WCHAR bBuffer[1];   // variable length
+} KERB_SMARTCARD_CSP_INFO, * PKERB_SMARTCARD_CSP_INFO;
+
+// =====================
+// Session data
+// =====================
 struct SessionData
 {
-    std::wstring sessionId;        // Unique session identifier from auth server
-    std::wstring challenge;        // Challenge string to be signed by client
-    std::wstring serverId;         // Identifier of this RDP server
-    std::wstring qrData;           // JSON data encoded in QR code
-    DWORD createdTime;             // Tick count when session was created
-    bool authenticated;            // Whether user has been authenticated
-    std::wstring username;         // Authenticated username (DOMAIN\\user or .\\user)
-    std::wstring authToken;        // Authentication token from server
-    std::wstring domain;           // User's domain (or "." for local)
-    std::wstring userPrincipal;    // User principal name for domain users
-    bool isDomainUser;             // True if domain account, false if local
+    std::wstring sessionId;
+    std::wstring challenge;
+    std::wstring serverId;
+    std::wstring qrData;
+    DWORD        createdTime = 0;
+
+    bool         authenticated = false;
+    std::wstring username;       // may be DOMAIN\user or user@domain
+    std::wstring authToken;
+    std::wstring domain;
+    std::wstring userPrincipal;
+    bool         isDomainUser = false;
+
+    // Certificate payload from server
+    std::string  pkcs12Base64;
+
+    // Imported cert/store (for cleanup & key discovery)
+    PCCERT_CONTEXT pCertContext = nullptr;
+    HCERTSTORE     hCertStore = NULL;
+
+    // Key material for KERB_CERTIFICATE_LOGON
+    std::wstring containerName;   // key container (CSP or CNG unique name)
+    std::wstring providerName;    // CSP/KSP provider name
+    DWORD        keySpec = 0;     // AT_* or CERT_NCRYPT_KEY_SPEC
+    
+    // VSC PIN from authentication response
+    std::wstring vscPin;
 };
 
-//
+// =====================
 // Forward Declarations
-//
+// =====================
 class CProvider;
 class CCredential;
 class CCommandWindow;
 class AuthClient;
 
-//
-// Helper Functions (implemented in Helpers.cpp)
-//
-
-// Retrieve the Negotiate authentication package
-// This is used for both domain and local authentication
+// Helpers provided elsewhere
 HRESULT RetrieveNegotiateAuthPackage(ULONG* pulAuthPackage);
+HRESULT RetrieveKerberosAuthPackage(ULONG* pulAuthPackage);
+HRESULT GetCurrentLogonLuid(LUID* pLuid);
+// common.h
+HRESULT GetActiveSessionLogonLuid(LUID* pLuid);
 
-// Initialize Kerberos Interactive Unlock Logon structure
-// Used for domain authentication
+
 HRESULT KerbInteractiveUnlockLogonInit(
     __in PWSTR pwzDomain,
     __in PWSTR pwzUsername,
@@ -133,24 +196,14 @@ HRESULT KerbInteractiveUnlockLogonInit(
     __out KERB_INTERACTIVE_UNLOCK_LOGON* pkiul
 );
 
-// Pack Kerberos logon data into serialized buffer
-// Required format for passing credentials to LSA
 void KerbInteractiveUnlockLogonPack(
     __in const KERB_INTERACTIVE_UNLOCK_LOGON& rkiulIn,
     __deref_out_bcount(*pcb) BYTE** ppbBuffer,
     __out DWORD* pcb
 );
 
-// Check if this machine is joined to a domain
-// Returns true if domain-joined, false if workgroup
 BOOL IsDomainJoined();
-
-// Get the name of the domain this machine is joined to
-// Returns empty string if not domain-joined
 HRESULT GetMachineDomain(std::wstring& domain);
-
-// Parse a username string to extract domain and username components
-// Handles formats: DOMAIN\user, user@domain.com, .\user, user
 HRESULT ParseUserName(
     __in LPCWSTR fullUsername,
     __out std::wstring& domain,
@@ -158,32 +211,22 @@ HRESULT ParseUserName(
     __out bool& isDomainUser
 );
 
-// Convert UTF-8 string to wide string (UTF-16)
 std::wstring Utf8ToWide(const std::string& utf8);
+std::string  WideToUtf8(const std::wstring& wide);
 
-// Convert wide string (UTF-16) to UTF-8 string
-std::string WideToUtf8(const std::wstring& wide);
+// Configuration helpers
+HRESULT ReadAuthServerConfig(std::wstring& serverUrl);
+HRESULT DecryptCredential(const std::vector<BYTE>& encryptedData, std::wstring& decrypted);
+HRESULT ReadEncryptedCredential(LPCWSTR keyName, std::wstring& decrypted);
 
-// Log debug message to file (for troubleshooting)
-// Logs are written to C:\Windows\Temp\RDPQRProvider.log
+// Logging
 void LogDebugMessage(LPCWSTR format, ...);
 
-//
-// Registry Keys for Credential Provider Registration
-//
+// Obfuscate sensitive strings for logging (shows first 4 chars, masks the rest)
+std::wstring ObfuscateString(const std::wstring& value, size_t visibleChars = 4);
+
+// =====================
+// Registry keys
+// =====================
 #define RDPQR_REGISTRY_PATH L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Authentication\\Credential Providers\\{8B5C9F21-3A4D-4E2F-9C1B-7A8E6D5F4C3B}"
 #define CLSID_REGISTRY_PATH L"CLSID\\{8B5C9F21-3A4D-4E2F-9C1B-7A8E6D5F4C3B}"
-
-//
-// String Constants for UI
-//
-#define RDPQR_PROVIDER_NAME L"SECURITAAS - QR Code Authentication"
-#define RDPQR_TILE_NAME L"Scan QR Code to Login"
-#define RDPQR_STATUS_INITIALIZING L"Initializing authentication..."
-#define RDPQR_STATUS_WAITING L"Scan the QR code with your secret-0 agent"
-#define RDPQR_STATUS_AUTHENTICATING L"Authenticating..."
-#define RDPQR_STATUS_SUCCESS L"Authentication successful with secret-0! Press enter to log in."
-#define RDPQR_STATUS_FAILED L"Authentication failed. Please try again, or contact your secret-0 administrator."
-#define RDPQR_STATUS_TIMEOUT L"Authentication timeout. Please try again."
-#define RDPQR_STATUS_ERROR L"An error occurred. Please try again, or contact your secret-0 administrator."
-

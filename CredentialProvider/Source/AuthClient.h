@@ -18,9 +18,12 @@ public:
     // Destructor - Clean up resources
     ~AuthClient();
 
+    // Get authentication token using credentials
+    HRESULT GetAuthToken(std::wstring& token);
+    
     // Create a new authentication session on the server
     // Returns session data including challenge and QR data
-    HRESULT CreateSession(SessionData& sessionData);
+    HRESULT CreateSession(SessionData& sessionData, LPCWSTR token = nullptr);
     
     // Check session status (poll for authentication)
     // Returns S_OK if authenticated, S_FALSE if still pending, E_FAIL if expired
@@ -31,13 +34,11 @@ public:
     HRESULT GenerateQRCodeBitmap(LPCWSTR qrData, HBITMAP* phBitmap);
     // Parse JSON string value (simple parser for our use case)
     HRESULT ParseJsonString(const std::wstring& json, LPCWSTR key, std::wstring& value);
-    // Make HTTP request (GET or POST)
-    HRESULT HttpRequest(LPCWSTR method, LPCWSTR path, LPCWSTR jsonData, std::wstring& response);
+    // Make HTTP request (GET or POST) - now supports HTTPS with no cert verification
+    HRESULT HttpRequest(LPCWSTR method, LPCWSTR path, LPCWSTR jsonData, std::wstring& response, 
+                        LPCSTR postData = nullptr, LPCWSTR contentType = nullptr, LPCWSTR additionalHeaders = nullptr);
 private:
     std::wstring m_serverUrl;           // Authentication server URL
     ULONG_PTR m_gdiplusToken;          // GDI+ token for graphics operations
-    
-
-    
-
+    std::wstring m_authToken;          // Cached authentication token
 };

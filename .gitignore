@@ -1,4 +1,23 @@
-# Build artifacts
+# ============================================
+# Repository Scope: Only track CredentialProvider and securitaascpinstaller
+# ============================================
+
+# Explicitly ignore directories we don't want to track
+AuthServer/
+examples/
+QRScanner/
+
+# Ignore all root-level files except specific ones
+/*
+!/.gitignore
+!/README.md
+!/LICENSE
+!/CredentialProvider/
+!/securitaascpinstaller/
+
+# ============================================
+# Build artifacts (applies to tracked directories)
+# ============================================
 *.obj
 *.pdb
 *.ilk
@@ -34,7 +53,7 @@ x86/
 [Oo]bj/
 [Ll]og/
 
-# Python
+# Python (for any Python files in tracked directories)
 __pycache__/
 *.py[cod]
 *$py.class
@@ -60,11 +79,6 @@ wheels/
 *.egg
 MANIFEST
 
-# Python virtual environments
-venv/
-ENV/
-env/
-
 # IDE
 .vscode/
 .idea/
@@ -85,6 +99,8 @@ config.local.yaml
 *.pfx
 user_*.pem
 *.p12
+*.cer
+*.der
 
 # Test files
 test_qr.png
@@ -117,15 +133,11 @@ $RECYCLE.BIN/
 # Backup files
 *.bak
 *.backup
-*~
 
 # Compiled binaries
 *.com
 *.class
-*.dll
-*.exe
 *.o
-*.so
 
 # Package files
 *.7z

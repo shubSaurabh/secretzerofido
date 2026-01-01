@@ -1,4 +1,4 @@
-# Test.ps1
+﻿# Test.ps1
 # Test script to verify RDP QR Credential Provider installation
 
 Write-Host "========================================" -ForegroundColor Cyan

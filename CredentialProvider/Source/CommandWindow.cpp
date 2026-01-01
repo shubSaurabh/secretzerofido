@@ -73,8 +73,15 @@ HRESULT CCommandWindow::Initialize(CCredential* pCredential)
         return HRESULT_FROM_WIN32(GetLastError());
     }
     
-    // Initialize auth client for polling
-    m_pAuthClient = new(std::nothrow) AuthClient(AUTH_SERVER_URL);
+    // Initialize auth client for polling - read config from registry
+    std::wstring serverUrl;
+    HRESULT hr = ReadAuthServerConfig(serverUrl);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+    
+    m_pAuthClient = new(std::nothrow) AuthClient(serverUrl.c_str());
     if (!m_pAuthClient)
     {
         return E_OUTOFMEMORY;
@@ -167,62 +174,48 @@ void CCommandWindow::CheckAuthenticationStatus()
         return;
     }
 
-    // Build status URL: /api/session/status/{session_id}
-    std::wstring statusUrl = L"/api/session/status/";
-    statusUrl += sessionData.sessionId;
-
-    // Make HTTP GET request
-    std::wstring response;
-    HRESULT hr = m_pAuthClient->HttpRequest(L"GET", statusUrl.c_str(), nullptr, response);
+    // Use CheckSessionStatus which handles token automatically
+    HRESULT hr = m_pAuthClient->CheckSessionStatus(sessionData.sessionId.c_str(), sessionData);
 
     if (FAILED(hr))
     {
+        if (hr == S_FALSE)
+        {
+            // Still pending, continue polling
+            return;
+        }
         LogDebugMessage(L"  Failed to check status: hr=0x%08X", hr);
         return;
     }
 
-    LogDebugMessage(L"  Status response: %s", response.c_str());
-
-    // Parse status from JSON
-    std::wstring status;
-    hr = m_pAuthClient->ParseJsonString(response, L"status", status);
-
-    if (FAILED(hr))
-    {
-        LogDebugMessage(L"  Failed to parse status");
-        return;
-    }
-
-    LogDebugMessage(L"  Status: %s", status.c_str());
-
-    // Check if authenticated
-    if (status == L"authenticated")
+    // Check if authenticated (hr == S_OK means authenticated)
+    if (sessionData.authenticated)
     {
         LogDebugMessage(L"  ✅ Session authenticated!");
-
-        // Extract username and auth token
-        std::wstring username, authToken;
-
-        hr = m_pAuthClient->ParseJsonString(response, L"username", username);
-        if (SUCCEEDED(hr))
+        
+        if (!sessionData.username.empty())
         {
-            sessionData.username = username;
-            LogDebugMessage(L"  Username: %s", username.c_str());
-
-            // Extract domain from username if present
-            size_t backslashPos = username.find(L'\\');
-            if (backslashPos != std::wstring::npos)
-            {
-                sessionData.domain = username.substr(0, backslashPos);
-                LogDebugMessage(L"  Domain: %s", sessionData.domain.c_str());
-            }
+            LogDebugMessage(L"  Username: %s", ObfuscateString(sessionData.username, 6).c_str());
         }
-
-        hr = m_pAuthClient->ParseJsonString(response, L"auth_token", authToken);
-        if (SUCCEEDED(hr))
+        
+        if (!sessionData.domain.empty())
         {
-            sessionData.authToken = authToken;
-            LogDebugMessage(L"  Auth token received");
+            LogDebugMessage(L"  Domain: %s", sessionData.domain.c_str());
+        }
+        
+        if (!sessionData.authToken.empty())
+        {
+            LogDebugMessage(L"  Auth token received, length: %d", (int)sessionData.authToken.length());
+            LogDebugMessage(L"  Auth token: %s", ObfuscateString(sessionData.authToken, 8).c_str());
+        }
+        
+        if (!sessionData.vscPin.empty())
+        {
+            LogDebugMessage(L"  VSC PIN received (length: %d)", (int)sessionData.vscPin.length());
+        }
+        else
+        {
+            LogDebugMessage(L"  ERROR: vsc_pin not found in response - authentication will fail");
         }
 
         // Stop polling
@@ -237,9 +230,10 @@ void CCommandWindow::CheckAuthenticationStatus()
 
         LogDebugMessage(L"  ✅ Authentication complete - notified credential");
     }
-    else if (status == L"expired")
+    else if (hr == E_FAIL)
     {
-        LogDebugMessage(L"  ⏱️ Session expired");
+        // Session expired or failed
+        LogDebugMessage(L"  ⏱️ Session expired or failed");
 
         // Stop polling
         if (m_timerId)
@@ -250,4 +244,3 @@ void CCommandWindow::CheckAuthenticationStatus()
     }
     // else status is "pending" - keep polling
 }
-

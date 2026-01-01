@@ -1,4 +1,4 @@
-# Install.ps1
+﻿# Install.ps1
 # Installation script for RDP QR Credential Provider
 # Must be run as Administrator
 

@@ -13,7 +13,7 @@ HRESULT FieldDescriptorCoAllocCopy(
 // Field descriptors for our credential tile
 static const CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR s_rgCredProvFieldDescriptors[] =
 {
-    { RDPQR_FI_LABEL, CPFT_LARGE_TEXT, L"SECURITAAS - QR Code Login" },
+    { RDPQR_FI_LABEL, CPFT_LARGE_TEXT, L"Logon using Securitaas" },
     { RDPQR_FI_QR_IMAGE, CPFT_TILE_IMAGE, L"QR Code" },
     { RDPQR_FI_STATUS_TEXT, CPFT_SMALL_TEXT, L"Scan QR code with your secret-0 agent" }
   
