@@ -243,7 +243,16 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the [Business Source License 1.1](LICENSE). You can use, modify and self-host it
+for free, including in production inside your own organization. You may not sell it or offer it as a hosted
+service. Each version becomes Apache 2.0 four years after it is published. Copyright SecurITaaS. For other
+licensing, contact SecurITaaS.
+
+Versions published before October 2026 were released under the MIT License, and those versions remain available
+under MIT.
+
+**Third-party components:** `CredentialProvider/Source/qrcodegen` is the QR Code generator library by Project
+Nayuki, used under the MIT License (see the notice in its source files).
 
 ## ⚠️ Disclaimer
 
